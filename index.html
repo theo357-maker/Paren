@@ -2064,7 +2064,7 @@ async function setupFirebaseMessaging() {
   if (!navigator.serviceWorker.controller) {
     try {
       // Enregistrer le SW unifié
-      const registration = await navigator.serviceWorker.register('sw.js', {
+      const registration = await navigator.serviceWorker.register('/sw.js', {
         scope: '/',
         updateViaCache: 'none' // Toujours vérifier les mises à jour
       });
@@ -8235,7 +8235,7 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {
     try {
       // Enregistrer le service worker
-      const registration = await navigator.serviceWorker.register('sw.js');
+      const registration = await navigator.serviceWorker.register('/sw.js');
       console.log('✅ Service Worker enregistré avec succès:', registration);
 
       // Vérifier l'installation de l'application
