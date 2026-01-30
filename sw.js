@@ -1,148 +1,222 @@
-// Service Worker principal unique - CS La Colombe Parent v3.0
-const CACHE_NAME = 'cs-lacolombe-v3.0';
-const APP_VERSION = '3.0.0';
+// Service Worker UNIFIÉ - Version 5.0 avec badges
+const CACHE_NAME = 'cs-lacolombe-v5.0';
+const APP_VERSION = '5.0.0';
+let badgeCount = 0;
 
-// Événement d'installation
-self.addEventListener('install', (event) => {
-  console.log('🔧 Installation Service Worker v3.0');
-  
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll([
-        '/',
-        'index.html',
-        'manifest.json',
-        'icon-192x192.png',
-        '/icon-512x512.png'
-         'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
-  'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js',
-  'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js'
+// Import Firebase
+importScripts('https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.22.1/firebase-messaging-compat.js');
 
-      ]);
-    }).then(() => {
-      return self.skipWaiting();
-    })
-  );
-});
+// Configuration Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyBn7VIddclO7KtrXb5sibCr9SjVLjOy-qI",
+  authDomain: "theo1d.firebaseapp.com",
+  projectId: "theo1d",
+  storageBucket: "theo1d.firebasestorage.app",
+  messagingSenderId: "269629842962",
+  appId: "1:269629842962:web:a80a12b04448fe1e595acb",
+  measurementId: "G-TNSG1XFMDZ"
+};
 
-// Événement d'activation
-self.addEventListener('activate', (event) => {
-  console.log('🚀 Activation Service Worker v3.0');
-  
-  event.waitUntil(
-    Promise.all([
-      // Nettoyer les anciens caches
-      caches.keys().then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
-              console.log(`🗑️ Suppression cache: ${cacheName}`);
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      }),
-      
-      // Prendre contrôle immédiatement
-      self.clients.claim()
-    ])
-  );
-});
+// Initialiser Firebase
+let messaging = null;
+try {
+  firebase.initializeApp(firebaseConfig);
+  messaging = firebase.messaging();
+  console.log('✅ Firebase SW initialisé');
+} catch (error) {
+  console.error('❌ Erreur Firebase SW:', error);
+}
 
 // ============================================
-// NOTIFICATIONS PUSH - GESTION SIMPLIFIÉE
+// GESTION DES BADGES
 // ============================================
-
-// Événement push (notification reçue)
-self.addEventListener('push', (event) => {
-  console.log('📨 Notification push reçue');
-  
+async function updateBadge(count) {
   try {
-    let notificationData = {};
+    const clients = await self.clients.matchAll();
     
-    // Essayer de parser les données
-    if (event.data) {
-      try {
-        notificationData = event.data.json();
-      } catch (e) {
-        // Si ce n'est pas du JSON, traiter comme texte
-        const text = event.data.text();
-        notificationData = {
-          title: 'CS La Colombe',
-          body: text || 'Nouvelle notification',
-          data: {}
-        };
-      }
-    } else {
-      // Données par défaut
-      notificationData = {
-        title: 'CS La Colombe',
-        body: 'Nouvelle mise à jour disponible',
-        data: {}
-      };
+    if (clients.length > 0) {
+      // Envoyer le nouveau compteur aux clients
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'BADGE_UPDATED',
+          count: count,
+          timestamp: Date.now()
+        });
+      });
     }
     
-    console.log('Données notification:', notificationData);
+    badgeCount = count;
     
-    // Options de notification
-    const options = {
-      body: notificationData.body || 'Nouvelle notification',
+    // Sauvegarder dans IndexedDB
+    await saveBadgeCount(count);
+    
+  } catch (error) {
+    console.error('❌ Erreur mise à jour badge:', error);
+  }
+}
+
+// Sauvegarder le compteur de badge
+async function saveBadgeCount(count) {
+  try {
+    const db = await openDatabase();
+    const tx = db.transaction(['badges'], 'readwrite');
+    const store = tx.objectStore('badges');
+    
+    await store.put({ id: 'badge_count', count: count, updated: Date.now() });
+  } catch (error) {
+    console.error('❌ Erreur sauvegarde badge:', error);
+  }
+}
+
+// Ouvrir IndexedDB
+function openDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('NotificationDB', 1);
+    
+    request.onupgradeneeded = function(event) {
+      const db = event.target.result;
+      
+      if (!db.objectStoreNames.contains('badges')) {
+        db.createObjectStore('badges', { keyPath: 'id' });
+      }
+      
+      if (!db.objectStoreNames.contains('notifications')) {
+        const store = db.createObjectStore('notifications', { keyPath: 'id' });
+        store.createIndex('timestamp', 'timestamp');
+        store.createIndex('read', 'read');
+      }
+    };
+    
+    request.onsuccess = function(event) {
+      resolve(event.target.result);
+    };
+    
+    request.onerror = function(event) {
+      reject(event.target.error);
+    };
+  });
+}
+
+// ============================================
+// GESTION DES NOTIFICATIONS FIREBASE
+// ============================================
+if (messaging) {
+  messaging.onBackgroundMessage(async (payload) => {
+    console.log('📱 Notification arrière-plan:', payload);
+    
+    // Incrémenter le badge
+    badgeCount++;
+    await updateBadge(badgeCount);
+    
+    // Préparer les options de notification
+    const title = getNotificationTitle(payload);
+    const body = getNotificationBody(payload);
+    const data = payload.data || {};
+    
+    const notificationOptions = {
+      body: body,
       icon: '/icon-192x192.png',
       badge: '/icon-72x72.png',
       vibrate: [200, 100, 200],
-      data: notificationData.data || {},
-      tag: notificationData.tag || 'general',
+      tag: data.type || 'general',
       renotify: true,
       requireInteraction: true,
       silent: false,
+      timestamp: Date.now(),
+      data: data,
       actions: [
         {
           action: 'view',
-          title: '👁️ Voir'
+          title: '👁️ Voir',
+          icon: '/icon-view-48x48.png'
         },
         {
           action: 'dismiss',
-          title: '❌ Fermer'
+          title: '❌ Fermer',
+          icon: '/icon-dismiss-48x48.png'
         }
       ]
     };
     
     // Afficher la notification
-    event.waitUntil(
-      self.registration.showNotification(
-        notificationData.title || 'CS La Colombe',
-        options
-      ).then(() => {
-        console.log('✅ Notification affichée avec succès');
-      })
-    );
+    await self.registration.showNotification(title, notificationOptions);
     
-  } catch (error) {
-    console.error('❌ Erreur dans push event:', error);
-    
-    // Notification de secours en cas d'erreur
-    event.waitUntil(
-      self.registration.showNotification('CS La Colombe', {
-        body: 'Nouvelle notification disponible',
-        icon: '/icon-192x192.png'
-      })
-    );
-  }
-});
+    // Sauvegarder la notification
+    await saveNotification({
+      id: `bg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      title: title,
+      body: body,
+      data: data,
+      timestamp: Date.now(),
+      read: false
+    });
+  });
+}
 
-// Clic sur notification
+// Obtenir le titre selon le type
+function getNotificationTitle(payload) {
+  const data = payload.data || {};
+  
+  switch (data.type) {
+    case 'grades': return '📊 Nouvelle note';
+    case 'incidents': return '⚠️ Nouvel incident';
+    case 'homework': return '📚 Nouveau devoir';
+    case 'presence': return '📅 Mise à jour présence';
+    case 'communiques': return '📄 Nouveau communiqué';
+    case 'payments': return '💰 Paiement';
+    case 'messages': return '📨 Nouveau message';
+    default: return payload.notification?.title || 'CS La Colombe';
+  }
+}
+
+// Obtenir le corps selon le type
+function getNotificationBody(payload) {
+  const data = payload.data || {};
+  const defaultBody = payload.notification?.body || 'Nouvelle notification';
+  
+  if (data.childName && data.type) {
+    switch (data.type) {
+      case 'grades': return `${data.childName}: Nouvelle note en ${data.subject || 'une matière'}`;
+      case 'incidents': return `${data.childName}: Incident signalé`;
+      case 'homework': return `${data.childName}: Nouveau devoir`;
+      case 'presence': return `${data.childName}: Mise à jour présence`;
+      default: return defaultBody;
+    }
+  }
+  
+  return defaultBody;
+}
+
+// Sauvegarder une notification
+async function saveNotification(notification) {
+  try {
+    const db = await openDatabase();
+    const tx = db.transaction(['notifications'], 'readwrite');
+    const store = tx.objectStore('notifications');
+    
+    await store.put(notification);
+  } catch (error) {
+    console.error('❌ Erreur sauvegarde notification:', error);
+  }
+}
+
+// ============================================
+// CLIC SUR NOTIFICATION
+// ============================================
 self.addEventListener('notificationclick', (event) => {
   console.log('🔘 Notification cliquée:', event.notification.tag);
   
-  // Fermer la notification
   event.notification.close();
   
   const action = event.action;
-  const notificationData = event.notification.data || {};
+  const data = event.notification.data || {};
   
-  // Gestion des actions
+  // Action "Fermer"
   if (action === 'dismiss') {
-    console.log('Notification fermée par utilisateur');
+    // Décrémenter le badge
+    badgeCount = Math.max(0, badgeCount - 1);
+    updateBadge(badgeCount);
     return;
   }
   
@@ -152,158 +226,219 @@ self.addEventListener('notificationclick', (event) => {
       type: 'window',
       includeUncontrolled: true
     }).then((clientList) => {
-      // Chercher une fenêtre ouverte
+      // Chercher un onglet ouvert
       for (const client of clientList) {
         if (client.url.includes(self.location.origin)) {
           client.focus();
           
-          // Envoyer les données de notification
+          // Envoyer les données de la notification
           client.postMessage({
             type: 'NOTIFICATION_CLICKED',
-            data: notificationData,
+            data: data,
+            badgeCount: badgeCount,
+            source: 'background',
             timestamp: Date.now()
           });
+          
+          // Marquer comme lue dans IndexedDB
+          if (data.notificationId) {
+            markNotificationAsRead(data.notificationId);
+          }
+          
+          // Décrémenter le badge
+          badgeCount = Math.max(0, badgeCount - 1);
+          updateBadge(badgeCount);
           
           return;
         }
       }
       
-      // Ouvrir une nouvelle fenêtre si aucune n'est ouverte
+      // Ouvrir un nouvel onglet
       return self.clients.openWindow('/').then((newClient) => {
         if (newClient) {
-          // Envoyer les données après un délai
+          // Envoyer les données après chargement
           setTimeout(() => {
             newClient.postMessage({
               type: 'NOTIFICATION_CLICKED',
-              data: notificationData
+              data: data,
+              badgeCount: badgeCount,
+              source: 'new_window'
             });
-          }, 1000);
+            
+            // Marquer comme lue
+            if (data.notificationId) {
+              markNotificationAsRead(data.notificationId);
+            }
+            
+            // Décrémenter le badge
+            badgeCount = Math.max(0, badgeCount - 1);
+            updateBadge(badgeCount);
+            
+          }, 1500);
         }
       });
     })
   );
 });
 
+// Marquer une notification comme lue
+async function markNotificationAsRead(notificationId) {
+  try {
+    const db = await openDatabase();
+    const tx = db.transaction(['notifications'], 'readwrite');
+    const store = tx.objectStore('notifications');
+    
+    const notification = await store.get(notificationId);
+    if (notification) {
+      notification.read = true;
+      await store.put(notification);
+    }
+  } catch (error) {
+    console.error('❌ Erreur marquage notification:', error);
+  }
+}
+
 // ============================================
 // COMMUNICATION AVEC LA PAGE
 // ============================================
-
-// Messages depuis la page
-self.addEventListener('message', (event) => {
+self.addEventListener('message', async (event) => {
   const { type, data } = event.data || {};
   
-  console.log(`📩 Message reçu: ${type}`);
-  
   switch (type) {
-    case 'SAVE_PARENT_DATA':
-      // Sauvegarder les données parent pour les notifications hors ligne
-      saveParentData(data);
+    case 'BACKGROUND_NOTIFICATION':
+      // Notification arrière-plan provenant de la page
+      await handleBackgroundNotification(data);
       break;
       
-    case 'PING':
-      // Répondre au ping pour confirmer que le SW est actif
+    case 'UPDATE_BADGE':
+      // Mettre à jour le badge
+      if (data.count !== undefined) {
+        await updateBadge(data.count);
+      }
+      break;
+      
+    case 'GET_BADGE_COUNT':
+      // Récupérer le compteur de badge
       event.ports[0]?.postMessage({
-        type: 'PONG',
-        timestamp: Date.now(),
-        version: APP_VERSION
+        type: 'BADGE_COUNT',
+        count: badgeCount,
+        timestamp: Date.now()
       });
       break;
       
-    case 'TEST_NOTIFICATION':
-      // Tester une notification
-      self.registration.showNotification('Test Notification', {
-        body: 'Ceci est un test de notification push',
+    case 'TEST_BACKGROUND_NOTIFICATION':
+      // Tester les notifications arrière-plan
+      await self.registration.showNotification('Test Badge', {
+        body: 'Ce test vérifie les badges et notifications',
         icon: '/icon-192x192.png',
-        badge: '/icon-72x72.png'
+        badge: '/icon-72x72.png',
+        tag: 'test_badge',
+        requireInteraction: true,
+        data: { type: 'test', badgeTest: true }
       });
+      
+      // Incrémenter le badge
+      badgeCount++;
+      await updateBadge(badgeCount);
+      break;
+      
+    case 'CLEAR_BADGE':
+      // Effacer le badge
+      badgeCount = 0;
+      await updateBadge(0);
       break;
   }
 });
 
-// Sauvegarder les données parent
-function saveParentData(parentData) {
-  console.log('💾 Sauvegarde données parent');
-  
-  // Stocker dans IndexedDB (simplifié)
-  const request = indexedDB.open('ParentAppCache', 1);
-  
-  request.onupgradeneeded = function(event) {
-    const db = event.target.result;
-    if (!db.objectStoreNames.contains('parent')) {
-      db.createObjectStore('parent', { keyPath: 'id' });
+// Gérer les notifications arrière-plan
+async function handleBackgroundNotification(notificationData) {
+  // Afficher la notification
+  await self.registration.showNotification(
+    notificationData.title || 'Notification',
+    {
+      body: notificationData.body || 'Nouvelle notification',
+      icon: '/icon-192x192.png',
+      badge: '/icon-72x72.png',
+      tag: notificationData.data?.type || 'general',
+      data: notificationData.data || {},
+      requireInteraction: true
     }
-  };
+  );
   
-  request.onsuccess = function(event) {
-    const db = event.target.result;
-    const transaction = db.transaction(['parent'], 'readwrite');
-    const store = transaction.objectStore('parent');
-    
-    store.put({
-      id: 'current',
-      ...parentData,
-      savedAt: new Date().toISOString()
-    });
-  };
+  // Incrémenter le badge
+  badgeCount++;
+  await updateBadge(badgeCount);
 }
 
 // ============================================
-// GESTION DU CACHE (simplifiée)
+// INSTALLATION ET CACHE
 // ============================================
+self.addEventListener('install', (event) => {
+  console.log('🔧 Installation SW v5.0');
+  event.waitUntil(
+    Promise.all([
+      caches.open(CACHE_NAME).then(cache => {
+        return cache.addAll([
+          '/',
+          'index.html',
+          'manifest.json',
+          'icon-192x192.png',
+          'icon-512x512.png',
+          'icon-72x72.png',
+          'icon-badge-96x96.png'
+        ]);
+      }),
+      self.skipWaiting()
+    ])
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  console.log('🚀 Activation SW v5.0');
+  event.waitUntil(
+    Promise.all([
+      caches.keys().then(cacheNames => {
+        return Promise.all(
+          cacheNames.map(cacheName => {
+            if (cacheName !== CACHE_NAME) {
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      }),
+      self.clients.claim()
+    ])
+  );
+});
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   
-  // Ignorer les requêtes Firebase et autres APIs
+  // Ignorer les APIs externes
   if (request.url.includes('firebase') || 
       request.url.includes('googleapis') ||
       request.url.includes('cloudinary')) {
     return;
   }
   
-  // Stratégie: Network First pour le HTML, Cache First pour les assets
-  if (request.headers.get('accept')?.includes('text/html')) {
-    event.respondWith(
-      fetch(request)
-        .then(response => {
-          // Mettre en cache la nouvelle version
+  // Stratégie Network First
+  event.respondWith(
+    fetch(request)
+      .then(response => {
+        if (response.ok && request.method === 'GET') {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then(cache => {
             cache.put(request, responseClone);
           });
-          return response;
-        })
-        .catch(() => {
-          // Retourner depuis le cache si hors ligne
-          return caches.match(request).then(cachedResponse => {
-            return cachedResponse || caches.match('/index.html');
-          });
-        })
-    );
-  } else {
-    // Cache First pour les autres ressources
-    event.respondWith(
-      caches.match(request)
-        .then(cachedResponse => {
-          return cachedResponse || fetch(request).then(response => {
-            // Mettre en cache les nouvelles ressources
-            if (response.ok) {
-              const responseClone = response.clone();
-              caches.open(CACHE_NAME).then(cache => {
-                cache.put(request, responseClone);
-              });
-            }
-            return response;
-          }).catch(() => {
-            // Fallback pour les images
-            if (request.destination === 'image') {
-              return caches.match('/icon-192x192.png');
-            }
-            return new Response('Ressource non disponible hors ligne');
-          });
-        })
-    );
-  }
+        }
+        return response;
+      })
+      .catch(() => {
+        return caches.match(request).then(cachedResponse => {
+          return cachedResponse || caches.match('/index.html');
+        });
+      })
+  );
 });
 
-console.log('✅ Service Worker chargé - Version ' + APP_VERSION);
+console.log('✅ Service Worker v5.0 chargé - Badges activés');
