@@ -39,6 +39,36 @@
 <!-- Scripts de mise à jour -->
 <script src="update-system.js"></script>
 
+<!-- Service Worker UNIQUE -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      // Enregistrer le SW UNIQUE
+      const registration = await navigator.serviceWorker.register('./sw.js', {
+        scope: './',
+        updateViaCache: 'none'
+      });
+      
+      console.log('✅ SW enregistré:', registration.scope);
+      
+      // Forcer l'activation
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'activated') {
+            console.log('🚀 SW activé - Notifications prêtes');
+          }
+        });
+      });
+      
+    } catch (error) {
+      console.error('❌ Erreur SW:', error);
+    }
+  });
+}
+</script>
+
   
 
     <style>
@@ -9316,6 +9346,116 @@ function openAIAssistant() {
   showAIDialog(response);
 }
     </script>
+<!-- Script pour les badges d'application -->
+<script>
+// Fonction pour mettre à jour le badge PWA
+function updatePwaBadge(count) {
+  if (!('setAppBadge' in navigator)) {
+    console.log('⚠️ Badges PWA non supportés');
+    return;
+  }
+  
+  try {
+    if (count > 0) {
+      navigator.setAppBadge(count).then(() => {
+        console.log(`✅ Badge PWA: ${count}`);
+      }).catch(error => {
+        console.error('❌ Erreur badge:', error);
+      });
+    } else {
+      navigator.clearAppBadge().then(() => {
+        console.log('✅ Badge PWA effacé');
+      }).catch(error => {
+        console.error('❌ Erreur effacement badge:', error);
+      });
+    }
+  } catch (error) {
+    console.error('❌ Erreur badge PWA:', error);
+  }
+}
+
+// Initialiser les badges au chargement
+document.addEventListener('DOMContentLoaded', function() {
+  // Vérifier si les badges sont supportés
+  if ('setAppBadge' in navigator) {
+    console.log('✅ Badges PWA supportés');
+    
+    // Restaurer le badge depuis localStorage
+    const savedBadgeCount = localStorage.getItem('pwa_badge_count');
+    if (savedBadgeCount && parseInt(savedBadgeCount) > 0) {
+      updatePwaBadge(parseInt(savedBadgeCount));
+    }
+    
+    // Synchroniser toutes les 30 secondes
+    setInterval(syncPwaBadge, 30000);
+  }
+});
+
+// Synchroniser le badge PWA
+async function syncPwaBadge() {
+  if (!window.currentParent || !navigator.onLine) return;
+  
+  try {
+    // Récupérer le compteur de notifications non lues
+    let badgeCount = 0;
+    
+    // Compter les notifications non lues
+    if (window.notificationManager) {
+      badgeCount = window.notificationManager.unreadCount;
+    }
+    
+    // Mettre à jour le badge PWA
+    updatePwaBadge(badgeCount);
+    
+    // Sauvegarder dans localStorage
+    localStorage.setItem('pwa_badge_count', badgeCount.toString());
+    
+  } catch (error) {
+    console.error('❌ Erreur synchronisation badge:', error);
+  }
+}
+
+// Effacer le badge quand on visite la page des notifications
+function clearPwaBadgeOnView() {
+  if ('clearAppBadge' in navigator) {
+    navigator.clearAppBadge().catch(console.error);
+    localStorage.setItem('pwa_badge_count', '0');
+  }
+}
+
+// Écouteur pour la page des notifications
+document.addEventListener('DOMContentLoaded', function() {
+  const notificationsLink = document.querySelector('[data-page="notifications"]');
+  if (notificationsLink) {
+    notificationsLink.addEventListener('click', function() {
+      setTimeout(clearPwaBadgeOnView, 1000);
+    });
+  }
+});
+
+// Fonction de test pour les badges
+window.testBadges = function() {
+  if ('setAppBadge' in navigator) {
+    // Ajouter un badge de test
+    navigator.setAppBadge(5).then(() => {
+      console.log('✅ Badge de test ajouté (5)');
+      
+      // Effacer après 5 secondes
+      setTimeout(() => {
+        navigator.clearAppBadge();
+        console.log('✅ Badge effacé');
+      }, 5000);
+    });
+  } else {
+    alert('Les badges ne sont pas supportés sur ce navigateur');
+  }
+};
+</script>
+
+<!-- Ajoutez un bouton de test dans votre interface -->
+<button onclick="testBadges()" style="position: fixed; bottom: 60px; right: 20px; z-index: 9999;">
+  Test Badges
+</button>
 </body>
 </html>    
     
