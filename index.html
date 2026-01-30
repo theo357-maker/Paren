@@ -18,10 +18,10 @@
   <meta name="msapplication-tap-highlight" content="no">
   <meta name="theme-color" content="#3498db">
 
-   <!-- Service Worker et mise à jour -->
+   - Service Worker et mise à jour -->
     <meta name="version" content="2.1.0">
     <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
-  
+
 
   <!-- Apple Touch Icons -->
   <link rel="apple-touch-icon" href="icon-192x192.png">
@@ -1880,6 +1880,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 let messaging = null;
 
+// Remplacer la ligne 1480 environ dans votre code
 const vapidKey = "BM8H6cADaP6tiA4t9Oc9D36jk1UmYoUBV3cATlJ5mvZ_-eQ5xd6HgX5twxWvZ2U2Y98HBkJ8bTph7epPJJYqBpc";
 
 async function initializeFirebaseMessaging() {
@@ -2050,45 +2051,35 @@ async function requestNotificationPermission() {
 async function setupFirebaseMessaging() {
   if (!('Notification' in window)) {
     console.log('❌ Ce navigateur ne supporte pas les notifications');
-    return;
+    return null;
   }
 
   // Demander la permission IMMÉDIATEMENT
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') {
     console.log('❌ Permission refusée');
-    return;
+    return null;
   }
 
-  // Vérifier et enregistrer le Service Worker UNIFIÉ
-  if (!navigator.serviceWorker.controller) {
-    try {
-      // Enregistrer le SW unifié
-      const registration = await navigator.serviceWorker.register('./sw.js', {
-        scope: './',
-        updateViaCache: 'none' // Toujours vérifier les mises à jour
-      });
-      
-      console.log('✅ Service Worker unifié enregistré:', registration.scope);
-      
-      // Attendre l'activation
-      if (registration.active) {
-        await registration.active;
-      } else if (registration.installing) {
-        await new Promise(resolve => {
-          registration.installing.addEventListener('statechange', () => {
-            if (registration.active) resolve();
-          });
-        });
-      }
-    } catch (swError) {
-      console.error('❌ Erreur enregistrement SW:', swError);
-      return;
-    }
-  }
-
-  // Initialiser Firebase dans la page principale aussi
   try {
+    // 1. Enregistrer le Service Worker UNIFIÉ
+    const registration = await navigator.serviceWorker.register('sw-firebase-unified.js', {
+      scope: './',
+      updateViaCache: 'none'
+    });
+    
+    console.log('✅ Service Worker enregistré:', registration.scope);
+    
+    // Attendre l'activation
+    if (registration.installing) {
+      await new Promise(resolve => {
+        registration.installing.addEventListener('statechange', () => {
+          if (registration.active) resolve();
+        });
+      });
+    }
+
+    // 2. Initialiser Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBn7VIddclO7KtrXb5sibCr9SjVLjOy-qI",
       authDomain: "theo1d.firebaseapp.com",
@@ -2099,27 +2090,22 @@ async function setupFirebaseMessaging() {
       measurementId: "G-TNSG1XFMDZ"
     };
     
-    // IMPORTANT: Initialiser Firebase dans la page aussi
     if (!firebase.apps.length) {
       firebase.initializeApp(firebaseConfig);
     }
     
-    // Obtenir l'instance messaging
     const messaging = firebase.messaging();
     
-    // Clé VAPID - ESSAYEZ AVEC ET SANS
-    const vapidKey = "BFc44CIL4VykUiY8_17s_HbUm5pRqhNhlFcy35H0XKuyFIq-2472MTfMZBfKMxW81DCHTkRB4xy_WaH-f3Ik2TM";
-    
-    // Obtenir le token FCM
+    // 3. Obtenir le token FCM AVEC la VAPID Key correcte
     const token = await messaging.getToken({
-      vapidKey: vapidKey,
+      vapidKey: "BM8H6cADaP6tiA4t9Oc9D36jk1UmYoUBV3cATlJ5mvZ_-eQ5xd6HgX5twxWvZ2U2Y98HBkJ8bTph7epPJJYqBpc",
       serviceWorkerRegistration: await navigator.serviceWorker.ready
     });
     
     if (token) {
       console.log('✅ Token FCM obtenu:', token.substring(0, 30) + '...');
       
-      // Sauvegarder le token IMMÉDIATEMENT
+      // Sauvegarder le token dans Firestore
       if (currentParent) {
         await updateDoc(doc(db, 'parents', currentParent.matricule), {
           fcmToken: token,
@@ -2127,17 +2113,19 @@ async function setupFirebaseMessaging() {
           lastTokenUpdate: serverTimestamp()
         });
         
-        // Tester immédiatement
-        setTimeout(() => sendTestNotification(token), 1000);
+        console.log('✅ Token sauvegardé pour le parent:', currentParent.matricule);
       }
+      
+      // Tester immédiatement
+      setTimeout(() => sendTestNotification(token), 2000);
     }
     
-    // Écouter les messages en temps réel
+    // 4. Écouter les messages en temps réel
     messaging.onMessage((payload) => {
       console.log('📨 Message reçu (premier plan):', payload);
       handleIncomingNotification(payload);
       
-      // Afficher une notification toast IMMÉDIATEMENT
+      // Afficher une notification toast
       showLocalNotification(
         payload.notification?.title || 'Notification',
         payload.notification?.body || 'Nouveau message',
@@ -2145,10 +2133,54 @@ async function setupFirebaseMessaging() {
       );
     });
     
+    return messaging;
+    
   } catch (error) {
     console.error('❌ Erreur Firebase Messaging:', error);
+    return null;
   }
 }
+
+async function testCompleteNotificationSystem() {
+  console.log('🧪 Test complet du système de notifications');
+  
+  // 1. Vérifier Service Worker
+  const registration = await navigator.serviceWorker.getRegistration();
+  console.log('Service Worker:', registration ? '✅ PRÉSENT' : '❌ ABSENT');
+  
+  // 2. Vérifier permission
+  const permission = await Notification.permission;
+  console.log('Permission:', permission);
+  
+  // 3. Obtenir le token
+  const messaging = await setupFirebaseMessaging();
+  if (messaging) {
+    const token = await messaging.getToken();
+    console.log('Token FCM:', token ? '✅ PRÉSENT' : '❌ ABSENT');
+    
+    // 4. Tester une notification locale
+    if (Notification.permission === 'granted') {
+      new Notification('✅ Test réussi!', {
+        body: 'Le système de notifications est configuré correctement',
+        icon: 'icon-192x192.png',
+        tag: 'test-success'
+      });
+    }
+    
+    return true;
+  }
+  
+  return false;
+}
+
+// Appeler au chargement de la page
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    if (window.currentParent) {
+      testCompleteNotificationSystem();
+    }
+  }, 3000);
+});
 
 // === GESTION DES COMMUNIQUÉS ===
 
