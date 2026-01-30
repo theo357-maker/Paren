@@ -10,10 +10,14 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll([
         '/',
-        '/index.html',
-        '/manifest.json',
-        '/icon-192x192.png',
+        'index.html',
+        'manifest.json',
+        'icon-192x192.png',
         '/icon-512x512.png'
+         'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
+  'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js',
+  'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js'
+
       ]);
     }).then(() => {
       return self.skipWaiting();
