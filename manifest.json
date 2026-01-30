@@ -2,12 +2,12 @@
   "name": "CS La Colombe - Espace Parent",
   "short_name": "CS La Colombe",
   "description": "Application de suivi scolaire avec notifications temps réel",
-  "start_url": "/index.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#3498db",
   "theme_color": "#3498db",
   "orientation": "portrait-primary",
-  "scope": "/",
+  "scope": "./",
   "lang": "fr",
   
   "icons": [
