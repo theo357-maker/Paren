@@ -1,7 +1,7 @@
 {
   "name": "CS La Colombe - Espace Parent",
   "short_name": "CS La Colombe",
-  "description": "Application de suivi scolaire avec notifications temps réel",
+  "description": "Application de suivi scolaire avec notifications temps réel et badges",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#3498db",
@@ -28,14 +28,38 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "icon-badge-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "badge"
     }
   ],
   
   "gcm_sender_id": "103953800507",
   "gcm_user_visible_only": true,
   
+  // Spécifique aux badges
+  "badge": "./icon-badge-96x96.png",
+  
+  "actions": [
+    {
+      "name": "view",
+      "title": "Voir",
+      "icon": "./icon-view-48x48.png"
+    },
+    {
+      "name": "dismiss",
+      "title": "Fermer",
+      "icon": "./icon-dismiss-48x48.png"
+    }
+  ],
+  
   "permissions": [
-    "notifications"
+    "notifications",
+    "background",
+    "badge"  // Permission pour les badges
   ],
   
   "categories": ["education", "productivity"],
